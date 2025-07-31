@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      background-color: #f0ffe0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      color: #2b5d34;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    .back-btn {
+      background-color: white;
+      color: #2b5d34;
+      border: 2px solid #2b5d34;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+
+    .filters {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+
+    .filters input {
+      margin: 0 5px;
+      padding: 6px 12px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      width: 200px;
+    }
+
+    .table-container {
+      max-height: 600px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    thead {
+      background-color: #ccf57c;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background-color: #ccf57c;
+      z-index: 1;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 10px;
+      font-size: 14px;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #f9fff4;
+    }
+
+    tbody tr:hover {
+      background-color: #e6ffe6;
+    }
+
+    th {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th span {
+      font-size: 12px;
+      color: #555;
+    }
+
+    .stock-negative {
+      background-color: #ffdddd !important;
+    }
+
+    .stock-low {
+      background-color: #fff6cc !important;
+    }
+
+  </style>
+</head>
+<body>
+  <button class="back-btn" onclick="goBack()">← Back</button>
+  <h2>Inventory Count</h2>
+
+  <div class="filters">
+    <input type="text" id="searchCode" placeholder="Search Item Code" oninput="filterTable()">
+    <input type="text" id="searchName" placeholder="Search Item Name" oninput="filterTable()">
+  </div>
+
+  <div class="table-container">
+    <table id="inventoryTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0, this)">Item Code <span></span></th>
+          <th onclick="sortTable(1, this)">Item Name <span></span></th>
+          <th onclick="sortTable(2, this)">Total In<br>(Today) <span></span></th>
+          <th onclick="sortTable(3, this)">Total Out<br>(Today) <span></span></th>
+          <th onclick="sortTable(4, this)">Actual Count <span></span></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+  function initStockMonitoring() {
+    function filterTable() {
+      const codeFilter = document.getElementById("searchCode").value.toLowerCase();
+      const nameFilter = document.getElementById("searchName").value.toLowerCase();
+      const rows = document.querySelectorAll("#inventoryTable tbody tr");
+
+      rows.forEach(row => {
+        const code = row.children[0].textContent.toLowerCase();
+        const name = row.children[1].textContent.toLowerCase();
+        const show = code.includes(codeFilter) && name.includes(nameFilter);
+        row.style.display = show ? "" : "none";
+      });
+    }
+
+    function renderInventoryTable(data) {
+      const tableBody = document.querySelector("#inventoryTable tbody");
+      tableBody.innerHTML = "";
+
+      data.forEach(([code, name, inToday, outToday, actual]) => {
+        const tr = document.createElement("tr");
+
+        const actualNum = Number(actual);
+        if (actualNum < 0) {
+          tr.classList.add("stock-negative");
+        } else if (actualNum <= 5) {
+          tr.classList.add("stock-low");
+        }
+
+        tr.innerHTML = `
+          <td>${code}</td>
+          <td>${name}</td>
+          <td>${inToday}</td>
+          <td>${outToday}</td>
+          <td>${actual}</td>
+        `;
+        tableBody.appendChild(tr);
+      });
+    }
+
+    google.script.run.withSuccessHandler(function(data) {
+      renderInventoryTable(data);
+
+      // Sort by Actual Count descending on page load
+      setTimeout(() => {
+        const th = document.querySelectorAll("th")[4]; // Actual Count column
+        sortTable(4, th, false); // false = descending
+      }, 0);
+    }).getInventoryBalanceData();
+
+    let sortDirections = [true, true, true, true, true]; // true = ascending
+
+    function sortTable(columnIndex, thElement, forceDirection = null) {
+      const table = document.getElementById("inventoryTable");
+      const tbody = table.querySelector("tbody");
+      const rows = Array.from(tbody.rows);
+
+      const isAscending = forceDirection !== null ? forceDirection : sortDirections[columnIndex];
+      if (forceDirection === null) {
+        sortDirections[columnIndex] = !isAscending;
+      }
+
+      // Clear all arrows
+      table.querySelectorAll("th span").forEach(span => span.textContent = "");
+
+      // Set arrow for clicked header
+      if (thElement && thElement.querySelector("span")) {
+        thElement.querySelector("span").textContent = isAscending ? " ▲" : " ▼";
+      }
+
+      rows.sort((a, b) => {
+        const valA = a.cells[columnIndex].textContent.trim();
+        const valB = b.cells[columnIndex].textContent.trim();
+
+        const numA = parseFloat(valA.replace(/[^0-9.-]+/g, ''));
+        const numB = parseFloat(valB.replace(/[^0-9.-]+/g, ''));
+
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return isAscending ? numA - numB : numB - numA;
+        } else {
+          return isAscending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+      });
+
+      tbody.innerHTML = "";
+      rows.forEach(row => tbody.appendChild(row));
+    }
+
+    // Make filterTable global to be called oninput
+    window.filterTable = filterTable;
+    window.sortTable = sortTable;
+  }
+
+  function goBack() {
+    if (typeof loadMainPage === "function") {
+      loadMainPage();
+    } else {
+      google.script.run.withSuccessHandler(function(html) {
+        document.open();
+        document.write(html);
+        document.close();
+      }).loadHtmlPage("mainpage_ui");
+    }
+  }
+
+  window.onload = initStockMonitoring;
+</script>
+</body>
+</html>

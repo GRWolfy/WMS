@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      background-color: #f0f9f0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      max-width: 700px;
+      margin: auto;
+    }
+    h2 {
+      text-align: center;
+      color: #2e7d32;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: 1px solid #a5d6a7;
+      border-radius: 6px;
+      background: #f1f8e9;
+    }
+    button {
+      padding: 12px;
+      margin: 10px 5px;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    #addToTableBtn {
+      background-color: #c8e6c9;
+      color: #1b5e20;
+    }
+    #addToTableBtn:disabled {
+      background-color: #e0e0e0;
+      color: #777;
+    }
+    #finalizeBtn {
+      background-color: #e0e0e0;
+      color: #777;
+    }
+    #finalizeBtn:enabled {
+      background-color: #81c784;
+      color: white;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #c8e6c9;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+    .delete-btn {
+      background-color: #ffcdd2;
+      color: #b71c1c;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 10px;
+    }
+    .back-btn {
+      margin-bottom: 10px;
+      background: none;
+      border: 2px solid green;
+      color: green;
+    }
+    #toast {
+      visibility: hidden;
+      min-width: 250px;
+      margin: auto;
+      background-color: #4caf50;
+      color: white;
+      text-align: center;
+      border-radius: 10px;
+      padding: 16px;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      right: 0;
+      bottom: 30px;
+      font-size: 16px;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <button class="back-btn" onclick="goBackToMain()">← Back</button>
+    <h2>Stock Out Form</h2>
+
+    <input type="text" id="barcode" placeholder="Enter Barcode">
+    <input type="number" id="quantity" placeholder="Quantity">
+    <input type="text" id="gsid" placeholder="Enter GSID">
+    <input type="text" id="itemName" placeholder="Item Name" readonly>
+    <input type="text" id="employee" placeholder="Employee Name" readonly>
+
+    <div>
+      <button id="addToTableBtn" disabled>Add to Table</button>
+      <button id="finalizeBtn" disabled>Finalize & Save</button>
+    </div>
+
+    <table id="previewTable">
+      <thead>
+        <tr>
+          <th>Item code</th>
+          <th>Barcode</th>
+          <th>Item</th>
+          <th>Qty</th>
+          <th>GSID</th>
+          <th>Employee</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    function initStockOutForm() {
+      const tableBody = document.querySelector("#previewTable tbody");
+      const barcode = document.getElementById("barcode");
+      const itemName = document.getElementById("itemName");
+      const quantity = document.getElementById("quantity");
+      const gsid = document.getElementById("gsid");
+      const employee = document.getElementById("employee");
+      const addToTableBtn = document.getElementById("addToTableBtn");
+      const finalizeBtn = document.getElementById("finalizeBtn");
+      let item_code = '';
+      let previewData = [];
+
+      function validateForm() {
+        const valid = barcode.value && itemName.value && quantity.value && gsid.value && employee.value;
+        addToTableBtn.disabled = !valid;
+      }
+
+      barcode.addEventListener('input', debounce(() => {
+        const code = barcode.value.trim();
+        if (!code) {
+          itemName.value = '';
+          item_code = '';
+          validateForm();
+          return;
+        }
+
+        google.script.run.withSuccessHandler(result => {
+          item_code = result.item_code || '';
+          itemName.value = result.sku_name || '';
+          validateForm();
+        }).getItemCodeFromBarcode(code);
+      }, 300));
+
+      gsid.addEventListener('input', debounce(() => {
+        const gsidVal = gsid.value.trim();
+        if (!gsidVal) {
+          employee.value = '';
+          validateForm();
+          return;
+        }
+
+        google.script.run.withSuccessHandler(name => {
+          employee.value = name || '';
+          validateForm();
+        }).getEmployeeNameByGSID(gsidVal);
+      }, 300));
+
+      quantity.addEventListener('input', validateForm);
+      employee.addEventListener('input', validateForm);
+
+      addToTableBtn.addEventListener("click", () => {
+        const newEntry = {
+          item_code: item_code,
+          barcode: barcode.value.trim(),
+          itemName: itemName.value.trim(),
+          quantity: quantity.value.trim(),
+          gsid: gsid.value.trim(),
+          employee: employee.value.trim()
+        };
+
+        previewData.push(newEntry);
+        renderTable();
+        resetFields();
+      });
+
+      finalizeBtn.addEventListener("click", () => {
+        if (previewData.length === 0) return;
+
+        finalizeBtn.disabled = true;
+        addToTableBtn.disabled = true;
+
+        google.script.run.withSuccessHandler(() => {
+          showToast("✅ Stock out saved successfully!");
+          gsid.value = "";
+          employee.value = "";
+          previewData = [];
+          renderTable();
+        }).saveMultipleStockOut(previewData);
+      });
+
+      function renderTable() {
+        tableBody.innerHTML = previewData.map((row, i) => `
+          <tr>
+            <td>${row.item_code}</td>
+            <td>${row.barcode}</td>
+            <td>${row.itemName}</td>
+            <td>${row.quantity}</td>
+            <td>${row.gsid}</td>
+            <td>${row.employee}</td>
+            <td><button class="delete-btn" onclick="removeRow(${i})">Delete</button></td>
+          </tr>
+        `).join('');
+        finalizeBtn.disabled = previewData.length === 0;
+      }
+
+      window.removeRow = function(i) {
+        previewData.splice(i, 1);
+        renderTable();
+      };
+
+      function resetFields() {
+        barcode.value = "";
+        itemName.value = "";
+        quantity.value = "";
+        item_code = '';
+        validateForm();
+      }
+
+      function showToast(message) {
+        const toast = document.getElementById("toast");
+        toast.textContent = message;
+        toast.style.visibility = "visible";
+        toast.style.opacity = "1";
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          setTimeout(() => {
+            toast.style.visibility = "hidden";
+          }, 500);
+        }, 3000);
+      }
+
+      function debounce(fn, delay) {
+        let timer;
+        return (...args) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn.apply(this, args), delay);
+        };
+      }
+    }
+
+    function goBackToMain() {
+      google.script.run.withSuccessHandler(function(html) {
+        document.open();
+        document.write(html);
+        document.close();
+      }).loadHtmlPage('mainpage_ui');
+    }
+  
+    window.onload = initStockOutForm;
+  </script>
+</body>
+</html>

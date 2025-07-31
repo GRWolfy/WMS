@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f9f4;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .form-container {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(46, 125, 50, 0.2);
+      width: 95%;
+      max-width: 1000px;
+      max-height: 90vh;
+      overflow: auto;
+      position: relative;
+    }
+
+    .back-button {
+      background-color: #FFFFFF;
+      color: #2e7d32;
+      border: 2px solid #2e7d32;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      position: absolute;
+      top: 20px;
+      left: 20px;
+    }
+
+    .back-button:hover {
+      background-color: #e8f5e9;
+    }
+
+    h2 {
+      color: #2e7d32;
+      text-align: center;
+      margin-bottom: 25px;
+      font-weight: 700;
+    }
+
+    input[type="file"],
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #a5d6a7;
+      border-radius: 8px;
+      background: #e8f5e9;
+      font-size: 1rem;
+      margin-bottom: 15px;
+    }
+
+    button {
+      background: #2e7d32;
+      color: white;
+      font-weight: 700;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background-color: #388e3c;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 10px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+
+    th {
+      background-color: #e0f2f1;
+      color: #2e7d32;
+    }
+
+    #previewContainer {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #c8e6c9;
+      background: #f9fff9;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+
+    #errorMsg {
+      color: #d32f2f;
+      margin-top: 10px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    #postSubmitPrompt {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <button class="back-button" onclick="goBackToMain()">← Back</button>
+
+    <h2>Upload Receiving File</h2>
+
+    <input type="text" id="gsidInput" placeholder="Enter GSID" />
+    <input type="text" id="employeeInput" placeholder="Employee Name" readonly />
+
+    <input type="file" id="fileInput" accept=".csv" />
+
+    <button id="uploadBtn" onclick="uploadFile()">Upload File</button>
+
+    <div id="errorMsg"></div>
+    <div id="previewContainer"></div>
+
+    <button id="confirmBtn" onclick="confirmSubmit()" style="display:none">✅ Confirm Submit</button>
+
+    <div id="postSubmitPrompt">
+      <strong>✅ File submitted successfully!</strong><br>
+      Do you want to upload another file?
+      <br><br>
+      <button onclick="resetForm()">Yes</button>
+    </div>
+  </div>
+
+  <script>
+    function initStockin() {
+      const requiredHeaders = ['day', 'taskid', 'gsproductid', 'uom', 'quantity'];
+      let parsedData = [];
+
+      const gsidInput = document.getElementById("gsidInput");
+      const employeeInput = document.getElementById("employeeInput");
+      const fileInput = document.getElementById('fileInput');
+      const uploadBtn = document.getElementById('uploadBtn');
+      const confirmBtn = document.getElementById('confirmBtn');
+
+      gsidInput.addEventListener("input", debounce(() => {
+        const gsid = gsidInput.value.trim();
+        if (!gsid) return employeeInput.value = "";
+        google.script.run.withSuccessHandler(name => {
+          employeeInput.value = name || "";
+        }).getEmployeeNameByGSID(gsid);
+      }, 300)); // 1 second delay
+
+      function uploadFile() {
+        const file = fileInput.files[0];
+
+        if (!file) {
+          document.getElementById("errorMsg").textContent = "⚠️ Please select a CSV file.";
+          return;
+        }
+
+        if (!file.name.endsWith('.csv')) {
+          document.getElementById("errorMsg").textContent = "❌ Only .csv files are supported.";
+          return;
+        }
+
+        fileInput.disabled = true;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = "Uploading...";
+        document.getElementById("errorMsg").textContent = "";
+
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+          const csv = e.target.result;
+          const rows = csv.trim().split('\n').map(row => row.split(','));
+          const headers = rows[0].map(h => h.trim().toLowerCase());
+
+          if (headers.length !== requiredHeaders.length ||
+              !requiredHeaders.every((h, i) => h === headers[i])) {
+            document.getElementById("errorMsg").textContent = '❌ Invalid file format. Headers must be: ' + requiredHeaders.join(', ');
+            fileInput.disabled = false;
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = "Upload File";
+            return;
+          }
+
+          parsedData = rows;
+
+          // Build preview table WITHOUT logid column
+          let html = '<table><thead><tr>';
+          // No logid header column here
+          html += rows[0].map(col => `<th>${col}</th>`).join('');
+          html += '</tr></thead><tbody>';
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const gsproductid = row[2].trim();
+            if (!gsproductid) continue;
+
+            // Generate logid internally if needed (not shown)
+            const timestampPart = Date.now().toString(36);
+            const randomPart = Math.random().toString(36).substring(2, 6);
+            const indexPart = i.toString(36);
+            const logid = `mdjm${timestampPart}${randomPart}${indexPart}`;
+
+            html += '<tr>';
+            html += row.map(cell => `<td>${cell}</td>`).join('');
+            html += '</tr>';
+          }
+
+          html += '</tbody></table>';
+
+          document.getElementById("previewContainer").innerHTML = html;
+          document.getElementById("confirmBtn").style.display = 'inline-block';
+
+          uploadBtn.textContent = "Upload File";
+        };
+
+        reader.readAsText(file);
+      }
+
+      function confirmSubmit() {
+        const employee = employeeInput.value.trim();
+        if (!employee) {
+          document.getElementById("errorMsg").textContent = "⚠️ Employee name is required.";
+          return;
+        }
+
+        fileInput.disabled = true;
+        uploadBtn.disabled = true;
+        confirmBtn.disabled = true;
+
+        const dataToSubmit = parsedData.slice(1).map(row => ({
+          day: row[0],
+          taskid: row[1],
+          gsproductid: row[2],
+          uom: row[3],
+          quantity: row[4]
+        }));
+
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            document.getElementById("previewContainer").innerHTML = "";
+            document.getElementById("confirmBtn").style.display = "none";
+            document.getElementById("postSubmitPrompt").style.display = "block";
+            if (msg) alert(msg);
+          })
+          .withFailureHandler(function(error) {
+            document.getElementById("errorMsg").textContent = "❌ " + error.message;
+            fileInput.disabled = false;
+            uploadBtn.disabled = false;
+            confirmBtn.disabled = false;
+          })
+          .uploadToInventoryIn({ data: dataToSubmit, employee });
+      }
+
+
+      function resetForm() {
+        parsedData = [];
+        fileInput.value = "";
+        fileInput.disabled = false;
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "Upload File";
+        confirmBtn.disabled = false;
+        confirmBtn.style.display = "none";
+        employeeInput.value = "";
+        gsidInput.value = "";
+        document.getElementById("errorMsg").textContent = "";
+        document.getElementById("previewContainer").innerHTML = "";
+        document.getElementById("postSubmitPrompt").style.display = "none";
+      }
+
+      function debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+          clearTimeout(timeout);
+          timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+      }
+
+      window.uploadFile = uploadFile;
+      window.confirmSubmit = confirmSubmit;
+      window.resetForm = resetForm;
+    }
+
+    function goBackToMain() {
+      google.script.run.withSuccessHandler(function (html) {
+        document.open();
+        document.write(html);
+        document.close();
+      }).loadHtmlPage('mainpage_ui');
+    }
+
+    window.onload = initStockin;
+  </script>
+</body>
+</html>

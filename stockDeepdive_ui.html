@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      /* Your existing CSS here */
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #f0f9f4;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+      #sidebar {
+        width: 220px;
+        background-color: #2e7d32;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 30px 10px;
+        box-sizing: border-box;
+      }
+      #sidebar h2 {
+        margin-bottom: 40px;
+        font-weight: 700;
+        font-size: 1.5rem;
+        text-align: center;
+      }
+      .sidebar-button {
+        width: 100%;
+        padding: 15px 10px;
+        margin-bottom: 15px;
+        background-color: #388e3c;
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-weight: 600;
+        font-size: 1.1rem;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      .sidebar-button.active,
+      .sidebar-button:hover {
+        background-color: #66bb6a;
+        color: #1b5e20;
+      }
+      #mainContent {
+        flex-grow: 1;
+        padding: 25px 40px;
+        background: #e9f5ea;
+        overflow-y: auto;
+        box-sizing: border-box;
+      }
+      h3 {
+        color: #2e7d32;
+        font-weight: 700;
+        margin-bottom: 15px;
+        text-align: center;
+      }
+      .filter-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      input[type="date"],
+      input[type="text"] {
+        padding: 7px 10px;
+        border: 1px solid #a5d6a7;
+        border-radius: 5px;
+        font-size: 0.9rem;
+        width: 150px;
+        box-sizing: border-box;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid #c8e6c9;
+      }
+      th {
+        background-color: #c8e6c9;
+        font-weight: 700;
+        color: #2e7d32;
+      }
+      tr:hover {
+        background-color: #f1f8f3;
+      }
+      @media (max-width: 700px) {
+        #sidebar {
+          width: 100%;
+          flex-direction: row;
+          padding: 10px;
+          justify-content: space-around;
+        }
+        #mainContent {
+          padding: 15px;
+          height: calc(100vh - 70px);
+        }
+        .filter-row {
+          justify-content: flex-start;
+          gap: 8px;
+        }
+        input[type="date"],
+        input[type="text"] {
+          width: 100px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sidebar">
+      <h2>WMS Deep Dive</h2>
+      <button id="btnStockIn" class="sidebar-button" onclick="showSection('stockIn')">Stock In</button>
+      <button id="btnStockOut" class="sidebar-button active" onclick="showSection('stockOut')">Stock Out</button>
+    </div>
+
+    <div id="mainContent">
+      <!-- Content injected here -->
+    </div>
+
+    <script>
+      // Store HTML for Stock In & Stock Out tables and filters
+      const stockInHtml = `
+        <h3>Stock In Deep Dive</h3>
+        <div class="filter-row">
+          <input type="date" id="stockInStartDate" />
+          <input type="date" id="stockInEndDate" />
+          <input type="text" id="stockInItemCode" placeholder="Item Code" />
+          <input type="text" id="stockInItemName" placeholder="Item Name" />
+          <input type="text" id="stockInEmployee" placeholder="Employee Name" />
+        </div>
+        <table id="stockInTable">
+          <thead>
+            <tr>
+              <th>Date (groWMS)</th>
+              <th>Date time (uploaded)</th>
+              <th>Item Code</th>
+              <th>Item Name</th>
+              <th>Employee</th>
+              <th>Quantity</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>`;
+
+      const stockOutHtml = `
+        <h3>Stock Out Deep Dive</h3>
+        <div class="filter-row">
+          <input type="date" id="stockOutStartDate" />
+          <input type="date" id="stockOutEndDate" />
+          <input type="text" id="stockOutItemCode" placeholder="Item Code" />
+          <input type="text" id="stockOutItemName" placeholder="Item Name" />
+          <input type="text" id="stockOutEmployee" placeholder="Employee Name" />
+        </div>
+        <table id="stockOutTable">
+          <thead>
+            <tr>
+              <th>Date & Time</th>
+              <th>Item Code</th>
+              <th>Item Name</th>
+              <th>Employee</th>
+              <th>Quantity</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>`;
+
+      const mainContent = document.getElementById('mainContent');
+
+      // Format date YYYY-MM-DD for input[type=date]
+      function getTodayDate() {
+        const d = new Date();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        const year = d.getFullYear();
+        return `${year}-${month}-${day}`;
+      }
+
+      // Get date string for days ago
+      function getDateDaysAgo(daysAgo) {
+        const d = new Date();
+        d.setDate(d.getDate() - daysAgo);
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        const year = d.getFullYear();
+        return `${year}-${month}-${day}`;
+      }
+
+      // Attach input event listeners to filter inputs to auto fetch data on any change
+      function attachAutoFilterListeners(section) {
+        const ids = section === 'stockIn' ? 
+          ['stockInStartDate', 'stockInEndDate', 'stockInItemCode', 'stockInItemName', 'stockInEmployee'] :
+          ['stockOutStartDate', 'stockOutEndDate', 'stockOutItemCode', 'stockOutItemName', 'stockOutEmployee'];
+
+        ids.forEach(id => {
+          const input = document.getElementById(id);
+          if (input) {
+            input.addEventListener('input', () => {
+              if(section === 'stockIn') fetchStockInData();
+              else fetchStockOutData();
+            });
+          }
+        });
+      }
+
+      // Show the selected section and set default dates & auto fetch data
+      function showSection(section) {
+        document.getElementById('btnStockIn').classList.toggle('active', section === 'stockIn');
+        document.getElementById('btnStockOut').classList.toggle('active', section === 'stockOut');
+
+        if (section === 'stockIn') {
+          mainContent.innerHTML = stockInHtml;
+          // Set default dates: today and 2 days ago
+          document.getElementById('stockInStartDate').value = getDateDaysAgo(2);
+          document.getElementById('stockInEndDate').value = getTodayDate();
+          attachAutoFilterListeners('stockIn');
+          fetchStockInData();
+        } else {
+          mainContent.innerHTML = stockOutHtml;
+          document.getElementById('stockOutStartDate').value = getDateDaysAgo(2);
+          document.getElementById('stockOutEndDate').value = getTodayDate();
+          attachAutoFilterListeners('stockOut');
+          fetchStockOutData();
+        }
+      }
+
+      // Format date string to only show date part (YYYY-MM-DD)
+      function formatDateOnly(dateTimeStr) {
+        if (!dateTimeStr) return '';
+        return dateTimeStr.split(' ')[0]; // split at space and take first part
+      }
+
+      function formatDateTimeNoSeconds(dateTimeStr) {
+        if (!dateTimeStr) return '';
+        const parts = dateTimeStr.split(' ');
+        if (parts.length < 2) return dateTimeStr;
+        const timeWithoutSeconds = parts[1].substring(0, 5);
+        return parts[0] + ' ' + timeWithoutSeconds;
+      }
+
+      // Render Stock In table body
+      function renderStockInTable(data) {
+        const tbody = document.querySelector('#stockInTable tbody');
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#999;">No data found</td></tr>`;
+          return;
+        }
+        data.forEach(row => {
+          const dateOnly =   formatDateOnly(row[0]); // Format Date (groWMS) column
+          const dateNoSeconds = formatDateTimeNoSeconds(row[1]);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${dateOnly}</td>
+            <td>${dateNoSeconds}</td>
+            <td>${row[2]}</td>
+            <td>${row[3]}</td>
+            <td>${row[4]}</td>
+            <td>${row[5]}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Fetch Stock In data from Apps Script backend
+      function fetchStockInData() {
+        const startDate = document.getElementById('stockInStartDate').value;
+        const endDate = document.getElementById('stockInEndDate').value;
+        const itemCode = document.getElementById('stockInItemCode').value.trim();
+        const itemName = document.getElementById('stockInItemName').value.trim();
+        const employee = document.getElementById('stockInEmployee').value.trim();
+
+        google.script.run.withSuccessHandler(renderStockInTable).getFilteredStockInData(startDate, endDate, itemCode, itemName, employee);
+      }
+
+      // Fetch Stock Out data from Apps Script backend
+      function fetchStockOutData() {
+        const startDate = document.getElementById('stockOutStartDate').value;
+        const endDate = document.getElementById('stockOutEndDate').value;
+        const itemCode = document.getElementById('stockOutItemCode').value.trim();
+        const itemName = document.getElementById('stockOutItemName').value.trim();
+        const employee = document.getElementById('stockOutEmployee').value.trim();
+
+        google.script.run.withSuccessHandler(renderStockOutTable).getFilteredStockOutData(startDate, endDate, itemCode, itemName, employee);
+      }
+
+      // Render Stock Out table body
+      function renderStockOutTable(data) {
+        const tbody = document.querySelector('#stockOutTable tbody');
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#999;">No data found</td></tr>`;
+          return;
+        }
+        data.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row[0]}</td>
+            <td>${row[1]}</td>
+            <td>${row[2]}</td>
+            <td>${row[3]}</td>
+            <td>${row[4]}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // On page load, show Stock Out by default with default date filters
+      window.onload = () => {
+        showSection('stockOut');
+      };
+    </script>
+  </body>
+</html>
